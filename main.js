@@ -148,7 +148,7 @@ async function processCard(index, item, edition){
     summary = await summarizeWithPollinations(articleText, lang);
   }catch(e){
     logDebug(`Summarize failed [${index}]`, e?.message || e);
-    sumEl.textContent = "No se pudo resumir la noticia.";
+    sumEl.textContent = `No se pudo resumir la noticia: ${e?.message || "error desconocido"}`;
     return;
   }
   sumEl.textContent = summary;
@@ -157,10 +157,20 @@ async function processCard(index, item, edition){
   let imgUrl = buildPollinationsImageUrl(buildCaricaturePrompt(summary, lang), seed);
   logDebug(`Image URL [${index}]`, imgUrl);
 
-  paintImage(thumbEl, imgUrl, seed, (ok, err) => {
+  let attemptedAutoReroll = false;
+  paintImage(thumbEl, imgUrl, seed, async (ok, err) => {
     if(!ok){
       logDebug(`Image load error [${index}]`, err?.message || err);
       noteEl.innerHTML = `⚠️ No se pudo cargar la imagen (quizá límite de tasa). Puedes reintentar con <strong>Re-roll</strong>.`;
+      // Try one automatic re-roll after a short delay
+      if(!attemptedAutoReroll){
+        attemptedAutoReroll = true;
+        await sleep(900);
+        seed = Math.floor(Math.random()*1e9);
+        imgUrl = buildPollinationsImageUrl(buildCaricaturePrompt(summary, lang), seed);
+        logDebug(`Auto Re-roll URL [${index}]`, imgUrl);
+        paintImage(thumbEl, imgUrl, seed);
+      }
     }
   });
 
@@ -204,13 +214,18 @@ async function summarizeWithPollinations(text, lang="es"){
   const prompt = buildSummaryPrompt(text, lang);
   const url = `https://text.pollinations.ai/${encodeURIComponent(prompt)}`;
   logDebug("Summarize URL:", url.slice(0, 180) + (url.length>180 ? " …" : ""));
-  const res = await fetchWithRetry(url, { headers:{'Accept':'text/plain'} }, 2);
+  const res = await fetchWithRetry(url, { headers:{'Accept':'text/plain'} }, 3);
   const out = await res.text();
+  // Sometimes proxies return HTML or JSON error bodies; guard against that to surface clearer errors
+  const sample = out.slice(0, 200).toLowerCase();
+  if (sample.includes("<html") || sample.includes("<body") || sample.includes("{\"error\"") || sample.includes("cloudflare") ){
+    throw new Error("Servicio de texto devolvió una respuesta inesperada");
+  }
   return cleanOneLine(out);
 }
 
 function buildSummaryPrompt(text, lang){
-  const trimmed = text.replace(/\s+/g," ").trim().slice(0, 1200);
+  const trimmed = text.replace(/\s+/g," ").trim().slice(0, 600);
   if (lang.startsWith("es")){
     return `Resume en una sola frase la siguiente noticia en español, destacando objetos y escenas visuales útiles para una viñeta satírica. Evita nombres propios y logotipos. Devuelve solo la frase. Noticia: ${trimmed}`;
   } else if (lang.startsWith("fr")){
@@ -256,7 +271,7 @@ async function fetchWithRetry(url, options={}, retries=1){
     }catch(e){
       lastErr = e;
       if (attempt === retries) break;
-      await sleep(600 * (attempt + 1)); // backoff
+      await sleep(700 * (attempt + 1)); // slightly longer backoff
       attempt++;
     }
   }
