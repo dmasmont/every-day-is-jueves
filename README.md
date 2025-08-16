@@ -1,4 +1,4 @@
-# Every day is Jueves — Debug Build
+# Every day is Jueves
 
 This build adds:
 - **Top 3** headlines (down from 5) to reduce rate-limit issues.
