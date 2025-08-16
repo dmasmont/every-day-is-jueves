@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Every day is Jueves</title>
+  <meta name="description" content="Una revista satírica de caricaturas generadas a partir de las noticias del día." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand">
+        <img src="./assets/jueves-logo.svg" alt="Every day is Jueves" class="logo" />
+        <div class="title-wrap">
+          <h1 class="title">Every day is <span>Jueves</span></h1>
+          <p class="tagline">Revista satírica de caricaturas basada en las noticias</p>
+        </div>
+      </div>
+
+      <div class="controls">
+        <label for="country-select" class="label">Edición:</label>
+        <select id="country-select" class="select"></select>
+        <button id="fetch-btn" class="btn primary">Obtener Top 5</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="status" class="status"></section>
+    <section id="news-grid" class="grid"></section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>
+        Hecho con <strong>Google News (RSS)</strong> → <strong>rss2json</strong> → <strong>Pollinations.ai</strong>. 
+        Todo en el navegador, sin backend.
+      </p>
+      <p class="disclaimer">
+        Las imágenes son ilustraciones generadas por IA con fines satíricos y pueden no representar a personas reales.
+      </p>
+      <p class="small">
+        © <span id="year"></span> Every day is Jueves.
+      </p>
+    </div>
+  </footer>
+
+  <script src="./main.js" type="module"></script>
+</body>
+</html>
