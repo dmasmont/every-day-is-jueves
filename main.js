@@ -234,7 +234,7 @@ async function summarizeWithPollinations(text, lang="es"){
 
 function buildSummaryPrompt(text, lang){
   const trimmed = text.replace(/\s+/g," ").trim().slice(0, 600);
-  return `Given this new, provide a funny caricaturized and comedic summary of the news, keep the original language: ${trimmed}`;
+  return `Make sure to keep the original language of the provided text. Given this news report, provide a funny caricaturized and comedic summary of the news, keep the original language: ${trimmed}`;
 }
 
 // --- Helpers & utilities ---
