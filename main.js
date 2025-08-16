@@ -1,16 +1,31 @@
-// Every day is Jueves — front-end only
-// Data pipeline: Google News RSS -> rss2json -> Pollinations (text+image)
-
+// Every day is Jueves — front-end only (with debug, retries, throttling, top-3)
 const $ = (sel, root=document) => root.querySelector(sel);
-const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
 
 const statusEl = $("#status");
 const gridEl = $("#news-grid");
 const fetchBtn = $("#fetch-btn");
 const selectEl = $("#country-select");
+const debugToggle = $("#debug-toggle");
+const debugPanel = $("#debug-panel");
+const debugLog = $("#debug-log");
 $("#year").textContent = new Date().getFullYear();
 
-// --- Editions: hl (language-region), gl (country), ceid (country:lang) ---
+let DEBUG = false;
+debugToggle.addEventListener("change", () => {
+  DEBUG = debugToggle.checked;
+  debugPanel.hidden = !DEBUG;
+});
+
+function logDebug(...args){
+  if(!DEBUG) return;
+  const msg = args.map(a => {
+    try { return typeof a === "string" ? a : JSON.stringify(a, null, 2); }
+    catch(e){ return String(a); }
+  }).join(" ");
+  console.log("[Jueves]", ...args);
+  debugLog.textContent += (msg + "\n");
+}
+
 const EDITIONS = [
   {key: "INTL_EN", label: "International (English)", hl:"en-US", gl:"US", ceid:"US:en", lang:"en"},
   {key: "ES_ES", label: "España (Español)", hl:"es-ES", gl:"ES", ceid:"ES:es", lang:"es"},
@@ -27,17 +42,16 @@ const EDITIONS = [
   {key: "BR_PT", label: "Brasil (Português)", hl:"pt-BR", gl:"BR", ceid:"BR:pt-BR", lang:"pt"},
 ];
 
-// Populate select
 for (const ed of EDITIONS){
   const opt = document.createElement("option");
   opt.value = ed.key;
   opt.textContent = ed.label;
   selectEl.appendChild(opt);
 }
-// Default to Spain
 selectEl.value = "ES_ES";
 
 fetchBtn.addEventListener("click", async () => {
+  debugLog.textContent = "";
   const ed = EDITIONS.find(e => e.key === selectEl.value) || EDITIONS[0];
   await loadTopNews(ed);
 });
@@ -47,27 +61,43 @@ async function loadTopNews(edition){
   setStatus("Cargando titulares…");
   try{
     const rssUrl = buildGoogleNewsRSS(edition);
-    const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`;
-    const res = await fetch(apiUrl);
-    if(!res.ok){ throw new Error(`rss2json error: ${res.status}`); }
-    const data = await res.json();
-    const items = (data.items || []).slice(0,5);
+    const endpoints = [
+      `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`,
+      `https://rss2json.com/api.json?rss_url=${encodeURIComponent(rssUrl)}` // fallback
+    ];
+    let data = null, lastErr = null;
+    for (const apiUrl of endpoints){
+      try {
+        logDebug("Fetch RSS->JSON:", apiUrl);
+        data = await fetchJsonWithRetry(apiUrl, 2);
+        break;
+      } catch(e){
+        lastErr = e;
+        logDebug("RSS fetch failed:", e.message || e);
+      }
+    }
+    if (!data) throw lastErr || new Error("rss2json failed on all endpoints.");
+
+    const items = (data.items || []).slice(0,3);
     if(items.length === 0){
       setStatus("No se encontraron noticias para esta edición.");
       return;
     }
     setStatus(`Mostrando ${items.length} titulares para ${edition.label}.`);
-    // Render placeholders
+
     for (let idx=0; idx<items.length; idx++){
       renderCard(idx, items[idx], edition);
     }
-    // Process sequentially (avoid hammering endpoints)
+
+    // Process sequentially with throttling to avoid rate limits
     for (let idx=0; idx<items.length; idx++){
       await processCard(idx, items[idx], edition);
+      await sleep(700); // throttle between items
     }
   }catch(err){
     console.error(err);
     setStatus("Error al cargar noticias. Reintenta más tarde.");
+    logDebug("Top-level error:", err?.stack || err?.message || String(err));
   }
 }
 
@@ -75,11 +105,8 @@ function buildGoogleNewsRSS({hl, gl, ceid}){
   return `https://news.google.com/rss?hl=${encodeURIComponent(hl)}&gl=${encodeURIComponent(gl)}&ceid=${encodeURIComponent(ceid)}`;
 }
 
-function setStatus(msg){
-  statusEl.textContent = msg;
-}
+function setStatus(msg){ statusEl.textContent = msg; }
 
-// Render static frame of a card
 function renderCard(index, item, edition){
   const card = document.createElement("article");
   card.className = "card";
@@ -89,9 +116,7 @@ function renderCard(index, item, edition){
   const when = pub ? pub.toLocaleString(edition.lang || 'es', {dateStyle:'medium', timeStyle:'short'}) : "";
 
   card.innerHTML = `
-    <div class="thumb-wrap" id="thumb-${index}">
-      <!-- image goes here -->
-    </div>
+    <div class="thumb-wrap" id="thumb-${index}"></div>
     <div class="card-head">
       <span class="badge">Top News</span>
       <h3><a href="${item.link}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title || "Titular")}</a></h3>
@@ -109,34 +134,44 @@ function renderCard(index, item, edition){
   gridEl.appendChild(card);
 }
 
-// Process: summarize -> image
 async function processCard(index, item, edition){
-  const sumEl = $(`#summary-${index}`);
-  const thumbEl = $(`#thumb-${index}`);
-  const rerollBtn = $(`#reroll-${index}`);
-  const openBtn = $(`#open-${index}`);
-  const noteEl = $(`#note-${index}`);
+  const sumEl = document.querySelector(`#summary-${index}`);
+  const thumbEl = document.querySelector(`#thumb-${index}`);
+  const rerollBtn = document.querySelector(`#reroll-${index}`);
+  const openBtn = document.querySelector(`#open-${index}`);
+  const noteEl = document.querySelector(`#note-${index}`);
 
   const lang = pickLanguage(edition);
   const articleText = [item.title, item.description || item.contentSnippet || ""].filter(Boolean).join(". ");
-  const summary = await summarizeWithPollinations(articleText, lang).catch(()=>null);
-  if(!summary){
+  let summary = null;
+  try{
+    summary = await summarizeWithPollinations(articleText, lang);
+  }catch(e){
+    logDebug(`Summarize failed [${index}]`, e?.message || e);
     sumEl.textContent = "No se pudo resumir la noticia.";
     return;
   }
   sumEl.textContent = summary;
 
-  // First image
   let seed = Math.floor(Math.random()*1e9);
-  const imgUrl = buildPollinationsImageUrl(buildCaricaturePrompt(summary, lang), seed);
-  paintImage(thumbEl, imgUrl, seed);
+  let imgUrl = buildPollinationsImageUrl(buildCaricaturePrompt(summary, lang), seed);
+  logDebug(`Image URL [${index}]`, imgUrl);
+
+  paintImage(thumbEl, imgUrl, seed, (ok, err) => {
+    if(!ok){
+      logDebug(`Image load error [${index}]`, err?.message || err);
+      noteEl.innerHTML = `⚠️ No se pudo cargar la imagen (quizá límite de tasa). Puedes reintentar con <strong>Re-roll</strong>.`;
+    }
+  });
+
   rerollBtn.disabled = false;
   openBtn.disabled = false;
 
   rerollBtn.addEventListener("click", () => {
     seed = Math.floor(Math.random()*1e9);
-    const url = buildPollinationsImageUrl(buildCaricaturePrompt(summary, lang), seed);
-    paintImage(thumbEl, url, seed);
+    imgUrl = buildPollinationsImageUrl(buildCaricaturePrompt(summary, lang), seed);
+    logDebug(`Re-roll URL [${index}]`, imgUrl);
+    paintImage(thumbEl, imgUrl, seed);
   });
   openBtn.addEventListener("click", () => {
     window.open(imgUrl, "_blank", "noopener,noreferrer");
@@ -148,9 +183,7 @@ async function processCard(index, item, edition){
   `;
 }
 
-// Decide language for summaries / prompts
 function pickLanguage(edition){
-  // Prefer Spanish for Spanish-speaking editions; else fall back to edition.lang or English.
   const esKeys = ["ES_ES","MX_ES","AR_ES","CL_ES","CO_ES"];
   if (esKeys.includes(edition.key)) return "es";
   return edition.lang || "en";
@@ -163,22 +196,20 @@ function buildCaricaturePrompt(summary, lang){
 }
 
 function buildPollinationsImageUrl(prompt, seed){
-  // Pollinations image endpoint. Keep simple and keyless.
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?seed=${seed}`;
-  return url;
+  // Add explicit size to avoid giant defaults; add seed for reproducibility.
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?seed=${seed}&width=768&height=768`;
 }
 
 async function summarizeWithPollinations(text, lang="es"){
   const prompt = buildSummaryPrompt(text, lang);
   const url = `https://text.pollinations.ai/${encodeURIComponent(prompt)}`;
-  const res = await fetch(url, {headers:{'Accept':'text/plain'}});
-  if(!res.ok) throw new Error("Pollinations text failed");
+  logDebug("Summarize URL:", url.slice(0, 180) + (url.length>180 ? " …" : ""));
+  const res = await fetchWithRetry(url, { headers:{'Accept':'text/plain'} }, 2);
   const out = await res.text();
   return cleanOneLine(out);
 }
 
 function buildSummaryPrompt(text, lang){
-  // Keep it short and visual; avoid names/logos to be safer for caricature prompts.
   const trimmed = text.replace(/\s+/g," ").trim().slice(0, 1200);
   if (lang.startsWith("es")){
     return `Resume en una sola frase la siguiente noticia en español, destacando objetos y escenas visuales útiles para una viñeta satírica. Evita nombres propios y logotipos. Devuelve solo la frase. Noticia: ${trimmed}`;
@@ -191,17 +222,61 @@ function buildSummaryPrompt(text, lang){
   } else if (lang.startsWith("pt")){
     return `Resuma em uma única frase a seguinte notícia em português, destacando elementos visuais para uma caricatura satírica. Evite nomes próprios e logotipos. Devolva apenas a frase. Notícia: ${trimmed}`;
   }
-  // default English
   return `Summarize the following news in one sentence in English, emphasizing concrete visual elements useful for a satirical caricature. Avoid proper names and logos. Return only the sentence. News: ${trimmed}`;
 }
 
-// Helpers
-function escapeHtml(str=""){
-  return str.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+// --- Helpers & utilities ---
+function escapeHtml(str=""){ return str.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+function cleanOneLine(s=""){ return s.replace(/\s+/g," ").replace(/^"+|"+$/g,"").trim(); }
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function fetchJsonWithRetry(url, retries=1){
+  const res = await fetchWithRetry(url, {}, retries);
+  const ct = res.headers.get("content-type") || "";
+  if (!ct.includes("json")) {
+    const text = await res.text();
+    throw new Error(`Expected JSON but got ${ct}. Body starts: ${text.slice(0,200)}`);
+  }
+  return res.json();
 }
-function cleanOneLine(s=""){
-  return s.replace(/\s+/g," ").replace(/^"+|"+$/g,"").trim();
+
+async function fetchWithRetry(url, options={}, retries=1){
+  let attempt=0, lastErr=null;
+  while (attempt <= retries){
+    try{
+      const res = await fetch(url, options);
+      if(!res.ok){
+        // Helpful logging for CORS/429/5xx
+        logDebug(`HTTP ${res.status} on ${url.slice(0, 160)}${url.length>160?" …":""}`);
+        if (res.status === 429) throw new Error("Rate limited (429).");
+        if (res.status >= 500) throw new Error(`Server error (${res.status}).`);
+        if (res.status >= 400) throw new Error(`Client error (${res.status}).`);
+      }
+      return res;
+    }catch(e){
+      lastErr = e;
+      if (attempt === retries) break;
+      await sleep(600 * (attempt + 1)); // backoff
+      attempt++;
+    }
+  }
+  throw lastErr || new Error("fetchWithRetry failed");
+}
+
+function paintImage(container, url, seed, cb){
+  container.innerHTML = "";
+  const img = document.createElement("img");
+  img.loading = "lazy";
+  img.alt = "Caricatura generada por IA";
+  img.src = url;
+  img.addEventListener("load", () => cb?.(true));
+  img.addEventListener("error", (e) => cb?.(false, e));
+  container.appendChild(img);
 }
 
 // Auto-load default
-loadTopNews(EDITIONS.find(e => e.key==="ES_ES"));
+(async () => {
+  // Try to load default quietly; user can toggle Debug to see details
+  const ed = {key:"ES_ES", hl:"es-ES", gl:"ES", ceid:"ES:es", label:"España (Español)", lang:"es"};
+  await loadTopNews(ed);
+})();

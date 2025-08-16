@@ -24,13 +24,18 @@
       <div class="controls">
         <label for="country-select" class="label">Edición:</label>
         <select id="country-select" class="select"></select>
-        <button id="fetch-btn" class="btn primary">Obtener Top 5</button>
+        <button id="fetch-btn" class="btn primary">Obtener Top 3</button>
+        <label class="debug-toggle"><input type="checkbox" id="debug-toggle" /> Debug</label>
       </div>
     </div>
   </header>
 
   <main class="container">
     <section id="status" class="status"></section>
+    <details id="debug-panel" class="debug" hidden>
+      <summary>Debug Panel</summary>
+      <pre id="debug-log" class="debug-log"></pre>
+    </details>
     <section id="news-grid" class="grid"></section>
   </main>
 
