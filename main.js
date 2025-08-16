@@ -16,6 +16,9 @@ debugToggle.addEventListener("change", () => {
   debugPanel.hidden = !DEBUG;
 });
 
+const SEARCH_PARAMS = new URLSearchParams(location.search);
+const IMG_TEMPLATE = SEARCH_PARAMS.get("template") || SEARCH_PARAMS.get("imgTemplate") || null;
+
 function logDebug(...args){
   if(!DEBUG) return;
   const msg = args.map(a => {
@@ -154,7 +157,7 @@ async function processCard(index, item, edition){
   sumEl.textContent = summary;
 
   let seed = Math.floor(Math.random()*1e9);
-  let imgUrl = buildPollinationsImageUrl(buildImagePromptFromTitle(item.title), seed);
+  let imgUrl = buildImageUrl(item.title, seed);
   logDebug(`Image URL [${index}]`, imgUrl);
 
   let attemptedAutoReroll = false;
@@ -163,11 +166,11 @@ async function processCard(index, item, edition){
       logDebug(`Image load error [${index}]`, err?.message || err);
       noteEl.innerHTML = `⚠️ No se pudo cargar la imagen (quizá límite de tasa). Puedes reintentar con <strong>Re-roll</strong>.`;
       // Try one automatic re-roll after a short delay
-      if(!attemptedAutoReroll){
+      if(!attemptedAutoReroll && !IMG_TEMPLATE){
         attemptedAutoReroll = true;
         await sleep(900);
         seed = Math.floor(Math.random()*1e9);
-        imgUrl = buildPollinationsImageUrl(buildImagePromptFromTitle(item.title), seed);
+        imgUrl = buildImageUrl(item.title, seed);
         logDebug(`Auto Re-roll URL [${index}]`, imgUrl);
         paintImage(thumbEl, imgUrl, seed);
       }
@@ -179,7 +182,7 @@ async function processCard(index, item, edition){
 
   rerollBtn.addEventListener("click", () => {
     seed = Math.floor(Math.random()*1e9);
-    imgUrl = buildPollinationsImageUrl(buildImagePromptFromTitle(item.title), seed);
+    imgUrl = buildImageUrl(item.title, seed);
     logDebug(`Re-roll URL [${index}]`, imgUrl);
     paintImage(thumbEl, imgUrl, seed);
   });
@@ -187,10 +190,15 @@ async function processCard(index, item, edition){
     window.open(imgUrl, "_blank", "noopener,noreferrer");
   });
 
-  noteEl.innerHTML = `
-    Prompt base: <em>“Generate a highly exaggerated funny caricature of this new: ${escapeHtml(item.title || "")}”</em>.
-    Semilla: <strong>${seed}</strong> &middot; Fuente: <a href="${item.link}" target="_blank" rel="noopener">artículo</a>
-  `;
+  if (IMG_TEMPLATE) {
+    rerollBtn.disabled = true;
+    rerollBtn.title = "Re-roll no disponible cuando se usa un template";
+  }
+
+  const noteHtml = IMG_TEMPLATE
+    ? `Template: <code>${escapeHtml(IMG_TEMPLATE)}</code>. Semilla: <strong>${seed}</strong> &middot; Fuente: <a href="${item.link}" target="_blank" rel="noopener">artículo</a>`
+    : `Prompt base: <em>“Generate a highly exaggerated funny caricature of this new: ${escapeHtml(item.title || "")}”</em>.\n    Semilla: <strong>${seed}</strong> &middot; Fuente: <a href="${item.link}" target="_blank" rel="noopener">artículo</a>`;
+  noteEl.innerHTML = noteHtml;
 }
 
 function pickLanguage(edition){
@@ -213,6 +221,19 @@ function buildPollinationsImageUrl(prompt, seed){
 function buildImagePromptFromTitle(newsTitle){
   const title = cleanOneLine(newsTitle || "");
   return `Generate a highly exaggerated funny caricature of this new: ${title}`;
+}
+
+function buildImageUrl(rawTitle, seed){
+  if (IMG_TEMPLATE) return buildImageUrlFromTemplate(IMG_TEMPLATE, rawTitle);
+  return buildPollinationsImageUrl(buildImagePromptFromTitle(rawTitle), seed);
+}
+
+function buildImageUrlFromTemplate(template, rawTitle){
+  const title = rawTitle || "";
+  if (template.includes("{{title}}")) return template.replaceAll("{{title}}", encodeURIComponent(title));
+  if (template.includes("{title}")) return template.replaceAll("{title}", encodeURIComponent(title));
+  const sep = template.includes("?") ? "&" : "?";
+  return `${template}${sep}title=${encodeURIComponent(title)}`;
 }
 
 async function summarizeWithPollinations(text, lang="es"){
