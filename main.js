@@ -68,7 +68,7 @@ async function loadTopNews(edition){
       setStatus("No se encontraron noticias para esta edición.");
       return;
     }
-    setStatus(`Mostrando ${items.length} titulares para ${edition.label}.`);
+    setStatus("");
 
     for (let idx=0; idx<items.length; idx++){
       renderCard(idx, items[idx], edition);
@@ -103,18 +103,12 @@ function renderCard(index, item, edition){
   card.innerHTML = `
     <div class="thumb-wrap" id="thumb-${index}"></div>
     <div class="card-head">
-      <span class="badge">Top News</span>
       <h3><a href="${item.link}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title || "Titular")}</a></h3>
       <div class="meta">${when}</div>
     </div>
     <div class="card-body">
       <div class="summary" id="summary-${index}">Resumiendo noticia…</div>
-      <div class="actions">
-        <button class="btn secondary" id="reroll-${index}" disabled>Re-roll</button>
-        <button class="btn" id="open-${index}" disabled>Abrir imagen</button>
-      </div>
     </div>
-    <div class="footer-note" id="note-${index}"></div>
   `;
   gridEl.appendChild(card);
 }
@@ -122,9 +116,6 @@ function renderCard(index, item, edition){
 async function processCard(index, item, edition){
   const sumEl = document.querySelector(`#summary-${index}`);
   const thumbEl = document.querySelector(`#thumb-${index}`);
-  const rerollBtn = document.querySelector(`#reroll-${index}`);
-  const openBtn = document.querySelector(`#open-${index}`);
-  const noteEl = document.querySelector(`#note-${index}`);
 
   const lang = pickLanguage(edition);
   const articleText = [item.title, item.description || item.contentSnippet || ""].filter(Boolean).join(". ");
@@ -146,8 +137,6 @@ async function processCard(index, item, edition){
   paintImage(thumbEl, imgUrl, seed, async (ok, err) => {
     if(!ok){
       logDebug(`Image load error [${index}]`, err?.message || err);
-      noteEl.innerHTML = `⚠️ No se pudo cargar la imagen (quizá límite de tasa). Puedes reintentar con <strong>Re-roll</strong>.`;
-      // Try one automatic re-roll after a short delay
       if(!attemptedAutoReroll && !IMG_TEMPLATE){
         attemptedAutoReroll = true;
         await sleep(900);
@@ -159,28 +148,7 @@ async function processCard(index, item, edition){
     }
   });
 
-  rerollBtn.disabled = false;
-  openBtn.disabled = false;
 
-  rerollBtn.addEventListener("click", () => {
-    seed = Math.floor(Math.random()*1e9);
-    imgUrl = buildImageUrl(item.title, seed);
-    logDebug(`Re-roll URL [${index}]`, imgUrl);
-    paintImage(thumbEl, imgUrl, seed);
-  });
-  openBtn.addEventListener("click", () => {
-    window.open(imgUrl, "_blank", "noopener,noreferrer");
-  });
-
-  if (IMG_TEMPLATE) {
-    rerollBtn.disabled = true;
-    rerollBtn.title = "Re-roll no disponible cuando se usa un template";
-  }
-
-  const noteHtml = IMG_TEMPLATE
-    ? `Template: <code>${escapeHtml(IMG_TEMPLATE)}</code>. Semilla: <strong>${seed}</strong> &middot; Fuente: <a href="${item.link}" target="_blank" rel="noopener">artículo</a>`
-    : `Prompt base: <em>“Generate a highly extreamly exaggerated funny caricature of this new: ${escapeHtml(item.title || "")}”</em>.\n    Semilla: <strong>${seed}</strong> &middot; Fuente: <a href="${item.link}" target="_blank" rel="noopener">artículo</a>`;
-  noteEl.innerHTML = noteHtml;
 }
 
 function pickLanguage(edition){
