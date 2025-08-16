@@ -1,33 +1,16 @@
-// Every day is Jueves — front-end only (with debug, retries, throttling, top-3)
+// Every day is Jueves — front-end only (retries, throttling, top-4)
 const $ = (sel, root=document) => root.querySelector(sel);
 
 const statusEl = $("#status");
 const gridEl = $("#news-grid");
 const fetchBtn = $("#fetch-btn");
 const selectEl = $("#country-select");
-const debugToggle = $("#debug-toggle");
-const debugPanel = $("#debug-panel");
-const debugLog = $("#debug-log");
 $("#year").textContent = new Date().getFullYear();
-
-let DEBUG = false;
-debugToggle.addEventListener("change", () => {
-  DEBUG = debugToggle.checked;
-  debugPanel.hidden = !DEBUG;
-});
 
 const SEARCH_PARAMS = new URLSearchParams(location.search);
 const IMG_TEMPLATE = SEARCH_PARAMS.get("template") || SEARCH_PARAMS.get("imgTemplate") || null;
 
-function logDebug(...args){
-  if(!DEBUG) return;
-  const msg = args.map(a => {
-    try { return typeof a === "string" ? a : JSON.stringify(a, null, 2); }
-    catch(e){ return String(a); }
-  }).join(" ");
-  console.log("[Jueves]", ...args);
-  debugLog.textContent += (msg + "\n");
-}
+function logDebug(){ /* debug removed */ }
 
 const EDITIONS = [
   {key: "INTL_EN", label: "International (English)", hl:"en-US", gl:"US", ceid:"US:en", lang:"en"},
@@ -54,7 +37,6 @@ for (const ed of EDITIONS){
 selectEl.value = "ES_ES";
 
 fetchBtn.addEventListener("click", async () => {
-  debugLog.textContent = "";
   const ed = EDITIONS.find(e => e.key === selectEl.value) || EDITIONS[0];
   await loadTopNews(ed);
 });
@@ -81,7 +63,7 @@ async function loadTopNews(edition){
     }
     if (!data) throw lastErr || new Error("rss2json failed on all endpoints.");
 
-    const items = (data.items || []).slice(0,3);
+    const items = (data.items || []).slice(0,4);
     if(items.length === 0){
       setStatus("No se encontraron noticias para esta edición.");
       return;
@@ -197,7 +179,7 @@ async function processCard(index, item, edition){
 
   const noteHtml = IMG_TEMPLATE
     ? `Template: <code>${escapeHtml(IMG_TEMPLATE)}</code>. Semilla: <strong>${seed}</strong> &middot; Fuente: <a href="${item.link}" target="_blank" rel="noopener">artículo</a>`
-    : `Prompt base: <em>“Generate a highly exaggerated funny caricature of this new: ${escapeHtml(item.title || "")}”</em>.\n    Semilla: <strong>${seed}</strong> &middot; Fuente: <a href="${item.link}" target="_blank" rel="noopener">artículo</a>`;
+    : `Prompt base: <em>“Generate a highly extreamly exaggerated funny caricature of this new: ${escapeHtml(item.title || "")}”</em>.\n    Semilla: <strong>${seed}</strong> &middot; Fuente: <a href="${item.link}" target="_blank" rel="noopener">artículo</a>`;
   noteEl.innerHTML = noteHtml;
 }
 
@@ -208,7 +190,7 @@ function pickLanguage(edition){
 }
 
 function buildCaricaturePrompt(summary, lang){
-  const base = "Make an exaggerated funny caricature describing the following news:";
+  const base = "Make an extreamly exaggerated funny caricature describing the following news:";
   const style = "Spanish satirical magazine style, bold ink outlines, vibrant flat colors, political cartoon composition, dynamic perspective, no text or words, no logos, high detail";
   return `${base} ${summary}. Style: ${style}.`;
 }
@@ -220,7 +202,7 @@ function buildPollinationsImageUrl(prompt, seed){
 
 function buildImagePromptFromTitle(newsTitle){
   const title = cleanOneLine(newsTitle || "");
-  return `Generate a highly exaggerated funny caricature of this new: ${title}`;
+  return `Generate a highly extreamly exaggerated funny caricature of this new: ${title}`;
 }
 
 function buildImageUrl(rawTitle, seed){
@@ -306,7 +288,7 @@ function paintImage(container, url, seed, cb){
 
 // Auto-load default
 (async () => {
-  // Try to load default quietly; user can toggle Debug to see details
+  // Auto-load default edition on start
   const ed = {key:"ES_ES", hl:"es-ES", gl:"ES", ceid:"ES:es", label:"España (Español)", lang:"es"};
   await loadTopNews(ed);
 })();

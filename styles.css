@@ -89,10 +89,15 @@ html,body{
 .badge.seed{ background: #fff; }
 .footer-note{ padding: 8px 14px 14px; font-size:.85rem; color: var(--muted); }
 
-/* Debug panel */
-.debug { background:#fff; border:2px dashed #aaa; border-radius:12px; padding:8px 12px; margin:8px 0 14px; }
-.debug-log{ white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:.85rem; }
-.debug-toggle{ display:flex; align-items:center; gap:6px; font-weight:700; }
+/* Debug panel removed */
 
 .site-footer{ border-top:6px solid var(--yellow); background:#111; color:#eee; padding: 22px 0; font-size:.95rem; }
 .small{font-size:.85rem; opacity:.8}
+
+/* Responsive */
+@media (max-width: 720px){
+  .controls{ flex-direction:column; align-items:stretch; gap:8px; padding:10px; }
+  .select, .btn{ width:100%; }
+  .grid{ grid-template-columns: 1fr; }
+  .card h3{ font-size:1rem; }
+}
