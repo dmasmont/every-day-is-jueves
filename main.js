@@ -154,7 +154,7 @@ async function processCard(index, item, edition){
   sumEl.textContent = summary;
 
   let seed = Math.floor(Math.random()*1e9);
-  let imgUrl = buildPollinationsImageUrl(buildCaricaturePrompt(summary, lang), seed);
+  let imgUrl = buildPollinationsImageUrl(buildImagePromptFromTitle(item.title), seed);
   logDebug(`Image URL [${index}]`, imgUrl);
 
   let attemptedAutoReroll = false;
@@ -167,7 +167,7 @@ async function processCard(index, item, edition){
         attemptedAutoReroll = true;
         await sleep(900);
         seed = Math.floor(Math.random()*1e9);
-        imgUrl = buildPollinationsImageUrl(buildCaricaturePrompt(summary, lang), seed);
+        imgUrl = buildPollinationsImageUrl(buildImagePromptFromTitle(item.title), seed);
         logDebug(`Auto Re-roll URL [${index}]`, imgUrl);
         paintImage(thumbEl, imgUrl, seed);
       }
@@ -179,7 +179,7 @@ async function processCard(index, item, edition){
 
   rerollBtn.addEventListener("click", () => {
     seed = Math.floor(Math.random()*1e9);
-    imgUrl = buildPollinationsImageUrl(buildCaricaturePrompt(summary, lang), seed);
+    imgUrl = buildPollinationsImageUrl(buildImagePromptFromTitle(item.title), seed);
     logDebug(`Re-roll URL [${index}]`, imgUrl);
     paintImage(thumbEl, imgUrl, seed);
   });
@@ -188,7 +188,7 @@ async function processCard(index, item, edition){
   });
 
   noteEl.innerHTML = `
-    Prompt base: <em>“Make an exaggerated funny caricature describing the following news…”</em>.
+    Prompt base: <em>“Generate a highly exaggerated funny caricature of this new: ${escapeHtml(item.title || "")}”</em>.
     Semilla: <strong>${seed}</strong> &middot; Fuente: <a href="${item.link}" target="_blank" rel="noopener">artículo</a>
   `;
 }
@@ -210,6 +210,11 @@ function buildPollinationsImageUrl(prompt, seed){
   return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?seed=${seed}&width=768&height=768`;
 }
 
+function buildImagePromptFromTitle(newsTitle){
+  const title = cleanOneLine(newsTitle || "");
+  return `Generate a highly exaggerated funny caricature of this new: ${title}`;
+}
+
 async function summarizeWithPollinations(text, lang="es"){
   const prompt = buildSummaryPrompt(text, lang);
   const url = `https://text.pollinations.ai/${encodeURIComponent(prompt)}`;
@@ -226,18 +231,7 @@ async function summarizeWithPollinations(text, lang="es"){
 
 function buildSummaryPrompt(text, lang){
   const trimmed = text.replace(/\s+/g," ").trim().slice(0, 600);
-  if (lang.startsWith("es")){
-    return `Resume en una sola frase la siguiente noticia en español, destacando objetos y escenas visuales útiles para una viñeta satírica. Evita nombres propios y logotipos. Devuelve solo la frase. Noticia: ${trimmed}`;
-  } else if (lang.startsWith("fr")){
-    return `Résume en une seule phrase la nouvelle suivante en français, en mettant en avant des éléments visuels pour une caricature satirique. Pas de noms propres ni logos. Retourne uniquement la phrase. Nouvelle: ${trimmed}`;
-  } else if (lang.startsWith("de")){
-    return `Fasse die folgende Nachricht in einem einzigen Satz auf Deutsch zusammen, mit visuellen Elementen für eine satirische Karikatur. Keine Eigennamen oder Logos. Gib nur den Satz zurück. Nachricht: ${trimmed}`;
-  } else if (lang.startsWith("it")){
-    return `Riassumi in una sola frase la seguente notizia in italiano, evidenziando elementi visivi per una vignetta satirica. Evita nomi propri e loghi. Restituisci solo la frase. Notizia: ${trimmed}`;
-  } else if (lang.startsWith("pt")){
-    return `Resuma em uma única frase a seguinte notícia em português, destacando elementos visuais para uma caricatura satírica. Evite nomes próprios e logotipos. Devolva apenas a frase. Notícia: ${trimmed}`;
-  }
-  return `Summarize the following news in one sentence in English, emphasizing concrete visual elements useful for a satirical caricature. Avoid proper names and logos. Return only the sentence. News: ${trimmed}`;
+  return `Given this new, provide a funny caricaturized and comedic summary of the news, keep the original language: ${trimmed}`;
 }
 
 // --- Helpers & utilities ---
